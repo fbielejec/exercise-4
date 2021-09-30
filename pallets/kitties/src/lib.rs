@@ -32,6 +32,8 @@ impl Kitty {
 
 #[frame_support::pallet]
 pub mod pallet {
+    use sp_runtime::AccountId32;
+
     use super::*;
 
     #[pallet::config]
@@ -39,7 +41,7 @@ pub mod pallet {
         type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
     }
 
-    /// Stores all the kitties. Key is (user, kitty_id).
+    /// Stores all the kitties. Key is (user, kitty_id), value is Kitty
     #[pallet::storage]
     #[pallet::getter(fn kitties)]
     pub type Kitties<T: Config> = StorageDoubleMap<
@@ -65,6 +67,8 @@ pub mod pallet {
         KittyCreated(T::AccountId, u32, Kitty),
         /// A new kitten is bred. \[owner, kitty_id, kitty\]
         KittyBred(T::AccountId, u32, Kitty),
+        /// Kitty onership is transferred \[old_owner, new_owner, kitty_id, kitty\]
+        KittyTransferred(T::AccountId, T::AccountId, u32, Kitty),
     }
 
     #[pallet::error]
@@ -83,10 +87,6 @@ pub mod pallet {
         #[pallet::weight(1000)]
         pub fn create(origin: OriginFor<T>) -> DispatchResult {
             let sender = ensure_signed(origin)?;
-
-            // DONE: refactor this method to use
-            // `Self::random_value` and `Self::get_next_kitty_id`
-            // to simplify the implementation
 
             let dna = Self::random_value(&sender);
             let id = Self::get_next_kitty_id()?;
@@ -128,6 +128,20 @@ pub mod pallet {
             Kitties::<T>::insert(&sender, kitty_id, &new_kitty);
 
             Self::deposit_event(Event::KittyBred(sender, kitty_id, new_kitty));
+
+            Ok(())
+        }
+
+        #[pallet::weight(1000)]
+        pub fn transfer(origin: OriginFor<T>, kitty_id: u32, to: T::AccountId) -> DispatchResult {
+            let from = ensure_signed(origin)?;
+
+            let kitty = Self::kitties(&from, kitty_id).ok_or(Error::<T>::InvalidKittyId)?;
+
+            Kitties::<T>::remove(&from, kitty_id);
+            Kitties::<T>::insert(&to, kitty_id, &kitty);
+
+            Self::deposit_event(Event::KittyTransferred(from, to, kitty_id, kitty));
 
             Ok(())
         }
